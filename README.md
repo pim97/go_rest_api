@@ -15,6 +15,18 @@ POST http://localhost:1991/movies
 Add following body
 {"name": "hackathon movie`", "year": 1964, "imbd_id": 4, "imbd_score": 5.5}
 
+**Example GET by ID**
+GET http://localhost:1991/movies/4
+
+Response
+{
+    "id": 4,
+    "name": "hackathon movie`",
+    "year": 1964,
+    "imbd_id": 4,
+    "imbd_score": 5.5
+}
+
 **All Endpoints**
 
 r.GET("/movies", getMovies)
