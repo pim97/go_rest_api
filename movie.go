@@ -12,7 +12,7 @@ var db *gorm.DB
 var e error
 
 type Movie struct {
-	ID        uint    `json:"id"`
+	ID        uint    `json:"-"`
 	Name      string  `json:"name"`
 	Year      int     `json:"year"`
 	IMBDId    int     `json:"imbd_id"`
@@ -57,7 +57,7 @@ func getMovies(c *gin.Context) {
 func getMovieByid(c *gin.Context) {
 	var movie Movie
 	id := c.Params.ByName("id")
-	if e := db.Where("id = ?", id).First(&movie).Error; e != nil {
+	if e := db.Where("imbd_id = ?", id).First(&movie).Error; e != nil {
 		c.AbortWithStatus(404)
 		fmt.Println(e)
 	} else {
