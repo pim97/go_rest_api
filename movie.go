@@ -2,10 +2,17 @@ package main
 
 import (
 	"fmt"
+	"io/ioutil"
+	"log"
+
+	"net/http"
+
+	"sync"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jinzhu/gorm"
 	_ "github.com/jinzhu/gorm/dialects/sqlite"
+	"github.com/tidwall/gjson"
 )
 
 var db *gorm.DB
@@ -14,10 +21,13 @@ var e error
 type Movie struct {
 	ID        uint    `json:"-"`
 	Name      string  `json:"name"`
+	Plot      string  `json:"plot"`
 	Year      int     `json:"year"`
-	IMBDId    int     `json:"imbd_id"`
+	IMBDId    string  `json:"imbd_id"`
 	IMDDScore float32 `json:"imbd_score"`
 }
+
+var moviesWait sync.WaitGroup
 
 func main() {
 	db, e = gorm.Open("sqlite3", "./example.db")
@@ -26,20 +36,53 @@ func main() {
 	}
 	defer db.Close()
 
-	db.AutoMigrate(&Movie{})
+	//Start async getting movie plots
+	executeGetMoviePlots()
 
-	r := gin.Default()
-	// Get movies
-	r.GET("/movies", getMovies)
-	// Get movies by id
-	r.GET("/movies/:id", getMovieByid)
-	// Insert new movie
-	r.POST("/movies", insertMovie)
-	// Update movie
-	r.PUT("/movies/:id", updateMovie)
-	// Delete movie
-	r.DELETE("/movies/:id", deleteMovie)
-	r.Run(":1991")
+	moviesWait.Wait()
+}
+
+// Gets all the movie plots in the current db and calls getMoviePlot async
+func executeGetMoviePlots() {
+	var movies []Movie
+	if e := db.Find(&movies).Error; e != nil {
+		fmt.Println(e)
+	} else {
+		for i := 0; i < len(movies); i++ {
+			moviesWait.Add(1)
+			go getMoviePlot(movies[i])
+		}
+	}
+}
+
+// Calls the api of omdbapi and gets the plot data then call update function
+func getMoviePlot(movie Movie) {
+	defer moviesWait.Done()
+	resp, err := http.Get("http://www.omdbapi.com/?i=tt" + movie.IMBDId + "&apikey=fbbe832e")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Fatal(err)
+	}
+	bodyJSON := string(body)
+	plotString := gjson.Get(bodyJSON, "Plot")
+	movie.Plot = plotString.String()
+	updateMovieByMovie(movie)
+	fmt.Println(plotString)
+}
+
+// Update the movie by using the gorm orm
+func updateMovieByMovie(movie Movie) {
+	var mov Movie
+	if e := db.Where("id = ?", movie.ID).First(&mov).Error; e != nil {
+		fmt.Println(e)
+	} else {
+		mov.Plot = movie.Plot
+		db.Save(&mov)
+	}
 }
 
 // Get movies
