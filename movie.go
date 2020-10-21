@@ -9,6 +9,7 @@ import (
 
 	"sync"
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/jinzhu/gorm"
 	_ "github.com/jinzhu/gorm/dialects/sqlite"
@@ -24,7 +25,7 @@ type Movie struct {
 	Plot      string  `json:"plot"`
 	Year      int     `json:"year"`
 	IMBDId    string  `json:"imbd_id"`
-	IMDDScore float32 `json:"imbd_score"`
+	IMDDScore float64 `json:"imbd_score"`
 }
 
 var moviesWait sync.WaitGroup
@@ -36,28 +37,44 @@ func main() {
 	}
 	defer db.Close()
 
-	//Start async getting movie plots
-	executeGetMoviePlots()
+	// db.AutoMigrate(&Movie{})
 
-	moviesWait.Wait()
+	r := gin.Default()
+	r.Use(cors.Default())
+
+	//FillMovies
+	r.GET("/fill/movies", executeGetMoviePlots)
+	// Get movies
+	r.GET("/movies", getMovies)
+	// Get movies by id
+	r.GET("/movies/:id", getMovieByid)
+	// Insert new movie
+	r.POST("/movies", insertMovie)
+	// Update movie
+	r.PUT("/movies/:id", updateMovie)
+	// Delete movie
+	r.DELETE("/movies/:id", deleteMovie)
+	r.Run(":1991")
 }
 
 // Gets all the movie plots in the current db and calls getMoviePlot async
-func executeGetMoviePlots() {
+func executeGetMoviePlots(c *gin.Context) {
 	var movies []Movie
 	if e := db.Find(&movies).Error; e != nil {
 		fmt.Println(e)
 	} else {
 		for i := 0; i < len(movies); i++ {
 			moviesWait.Add(1)
-			go getMoviePlot(movies[i])
+			go getMoviePlot(movies[i], i)
+			defer moviesWait.Done()
 		}
 	}
+	moviesWait.Wait()
 }
 
 // Calls the api of omdbapi and gets the plot data then call update function
-func getMoviePlot(movie Movie) {
-	defer moviesWait.Done()
+func getMoviePlot(movie Movie, i int) {
+	fmt.Println(i)
 	resp, err := http.Get("http://www.omdbapi.com/?i=tt" + movie.IMBDId + "&apikey=fbbe832e")
 	if err != nil {
 		log.Fatal(err)
@@ -69,7 +86,14 @@ func getMoviePlot(movie Movie) {
 	}
 	bodyJSON := string(body)
 	plotString := gjson.Get(bodyJSON, "Plot")
+	name := gjson.Get(bodyJSON, "Title")
+	year := gjson.Get(bodyJSON, "Year")
+	score := gjson.Get(bodyJSON, "imdbRating")
 	movie.Plot = plotString.String()
+	movie.Name = name.String()
+	movie.Year = int(year.Int())
+	movie.IMDDScore = score.Float()
+	fmt.Println(movie)
 	updateMovieByMovie(movie)
 	fmt.Println(plotString)
 }
@@ -81,6 +105,9 @@ func updateMovieByMovie(movie Movie) {
 		fmt.Println(e)
 	} else {
 		mov.Plot = movie.Plot
+		mov.Name = movie.Name
+		mov.Year = movie.Year
+		mov.IMDDScore = movie.IMDDScore
 		db.Save(&mov)
 	}
 }
@@ -114,6 +141,8 @@ func insertMovie(c *gin.Context) {
 	c.BindJSON(&movie)
 	db.Create(&movie)
 	c.JSON(200, movie)
+
+	getMoviePlot(movie, 0)
 }
 
 // Update movie
