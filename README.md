@@ -19,6 +19,8 @@ go get github.com/jinzhu/gorm/dialects/sqlite
 
 5. database sqlite example.db is already included
 
-6. main function will concurrently get all movies when executed
+7. npm run serve to run the VueJS application
+
+8. Add an IMDB ID to the input field and click the button
 
 ![Test Image 3](https://i.gyazo.com/ea66cdb622508860dedcc13cedad5762.gif)
